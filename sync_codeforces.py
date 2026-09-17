@@ -5,11 +5,6 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
 HANDLE = os.environ["CODEFORCES_HANDLE"]
 
 API_URL = (
@@ -25,19 +20,11 @@ API_URL = (
 SOLUTIONS_DIR = Path("solutions")
 
 
-# ============================================================
-# HELPERS
-# ============================================================
-
 def sanitize_filename(name):
     name = re.sub(r'[<>:"/\\|?*]', '', name)
     name = re.sub(r'\s+', '_', name)
     name = name.strip("._")
-
-    if not name:
-        name = "Problem"
-
-    return name[:100]
+    return name[:100] or "Problem"
 
 
 def get_extension(language):
@@ -45,31 +32,22 @@ def get_extension(language):
 
     if "java" in language:
         return ".java"
-
     if "python" in language:
         return ".py"
-
     if "gnu c++" in language or "g++" in language or "c++" in language:
         return ".cpp"
-
     if "gnu c" in language or language == "c":
         return ".c"
-
     if "kotlin" in language:
         return ".kt"
-
     if "rust" in language:
         return ".rs"
-
-    if "c#" in language or "csharp" in language:
+    if "c#" in language:
         return ".cs"
-
     if "go" in language:
         return ".go"
-
     if "javascript" in language:
         return ".js"
-
     if "typescript" in language:
         return ".ts"
 
@@ -81,40 +59,27 @@ def get_language_folder(language):
 
     if "java" in language:
         return "Java"
-
     if "python" in language:
         return "Python"
-
     if "gnu c++" in language or "g++" in language or "c++" in language:
         return "C++"
-
     if "gnu c" in language or language == "c":
         return "C"
-
     if "kotlin" in language:
         return "Kotlin"
-
     if "rust" in language:
         return "Rust"
-
-    if "c#" in language or "csharp" in language:
+    if "c#" in language:
         return "CSharp"
-
     if "go" in language:
         return "Go"
-
     if "javascript" in language:
         return "JavaScript"
-
     if "typescript" in language:
         return "TypeScript"
 
     return "Other"
 
-
-# ============================================================
-# FETCH CODEFORCES SUBMISSIONS
-# ============================================================
 
 print(f"Fetching Codeforces submissions for: {HANDLE}")
 
@@ -128,41 +93,28 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=30) as response:
     data = json.loads(response.read().decode("utf-8"))
 
-
 if data.get("status") != "OK":
     raise RuntimeError(
         "Codeforces API error: "
         + data.get("comment", "Unknown error")
     )
 
-
 submissions = data["result"]
 
 print(f"Fetched {len(submissions)} submissions.")
-
-
-# ============================================================
-# CREATE SOLUTION FILES
-# ============================================================
 
 created = 0
 skipped = 0
 
 for submission in submissions:
 
-    # Only Accepted submissions
     if submission.get("verdict") != "OK":
         continue
 
     problem = submission.get("problem", {})
     source = submission.get("source")
 
-    # We need source code
     if not source:
-        print(
-            f"Skipping {submission.get('id')}: "
-            "source code unavailable."
-        )
         skipped += 1
         continue
 
@@ -184,28 +136,21 @@ for submission in submissions:
 
     safe_name = sanitize_filename(problem_name)
 
-    # Example:
-    # solutions/Java/800/A_Watermelon.java
-
     output_dir = SOLUTIONS_DIR / language_folder
     output_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{contest_id}_{index}_{safe_name}{extension}"
-
     output_file = output_dir / filename
 
-    # Do not overwrite an existing solution
     if output_file.exists():
         skipped += 1
         continue
 
-    # Add useful metadata at the top
     header = (
         f"// Codeforces Problem: {contest_id}{index}\n"
         f"// Title: {problem_name}\n"
         f"// Language: {language}\n"
         f"// Submission ID: {submission.get('id')}\n"
-        f"// Contest: {contest_id}\n"
         f"// Rating: {problem.get('rating', 'N/A')}\n"
         f"// Tags: {', '.join(problem.get('tags', []))}\n"
         f"// URL: https://codeforces.com/problemset/problem/"
@@ -219,13 +164,7 @@ for submission in submissions:
     )
 
     print(f"Added: {output_file}")
-
     created += 1
-
-
-# ============================================================
-# SUMMARY
-# ============================================================
 
 print()
 print("========================================")
