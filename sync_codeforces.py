@@ -12,8 +12,7 @@ API_URL = (
     + urllib.parse.urlencode({
         "handle": HANDLE,
         "from": 1,
-        "count": 1000,
-        "includeSources": "true"
+        "count": 1000
     })
 )
 
