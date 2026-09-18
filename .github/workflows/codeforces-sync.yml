@@ -1,12 +1,14 @@
 name: Codeforces Sync
 
-on: 
+on:
+  push:
+    branches:
+      - main
+
   schedule:
     - cron: "17,47 * * * *"
-  workflow_dispatch:
 
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
   sync:
