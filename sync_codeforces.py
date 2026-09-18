@@ -1,4 +1,3 @@
-import html
 import json
 import os
 import re
@@ -13,7 +12,8 @@ API_URL = (
     + urllib.parse.urlencode({
         "handle": HANDLE,
         "from": 1,
-        "count": 1000
+        "count": 1000,
+        "includeSources": "true"
     })
 )
 
@@ -81,78 +81,12 @@ def get_language_folder(language):
     return "Other"
 
 
-def fetch_source_code(contest_id, submission_id):
-    urls = [
-        f"https://codeforces.com/contest/{contest_id}/submission/{submission_id}",
-        f"https://codeforces.com/problemset/submission/{contest_id}/{submission_id}"
-    ]
-
-    for url in urls:
-        print(f"Opening submission page: {url}")
-
-        try:
-            request = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) "
-                        "Chrome/120.0 Safari/537.36"
-                    )
-                }
-            )
-
-            with urllib.request.urlopen(request, timeout=30) as response:
-                page = response.read().decode("utf-8", errors="ignore")
-
-            print(f"Downloaded submission page ({len(page)} bytes).")
-
-            match = re.search(
-                r'<pre[^>]*id="program-source-text"[^>]*>(.*?)</pre>',
-                page,
-                re.DOTALL
-            )
-
-            if not match:
-                match = re.search(
-                    r'<pre[^>]*class="[^"]*program-source-text[^"]*"[^>]*>(.*?)</pre>',
-                    page,
-                    re.DOTALL
-                )
-
-            if match:
-                source = match.group(1)
-
-                source = html.unescape(source)
-
-                source = re.sub(
-                    r'<br\s*/?>',
-                    '\n',
-                    source,
-                    flags=re.IGNORECASE
-                )
-
-                source = re.sub(r'<[^>]+>', '', source)
-
-                print("Source code successfully extracted.")
-
-                return source.strip()
-
-            print("Source code was not found on this page.")
-
-        except Exception as e:
-            print(f"Could not fetch submission page: {e}")
-
-    return None
-
-
 print(f"Fetching Codeforces submissions for: {HANDLE}")
 
 request = urllib.request.Request(
     API_URL,
     headers={
-        "User-Agent": "Codeforces-GitHub-Sync/2.0"
+        "User-Agent": "Codeforces-GitHub-Sync/3.0"
     }
 )
 
@@ -193,20 +127,20 @@ for submission in submissions:
         "Unknown"
     )
 
+    source = submission.get("source")
+
     print()
-    print(f"Fetching source for {contest_id}{index}")
+    print(f"Processing: {contest_id}{index}")
     print(f"Submission ID: {submission_id}")
     print(f"Problem: {problem_name}")
-
-    source = fetch_source_code(
-        contest_id,
-        submission_id
-    )
+    print(f"Language: {language}")
 
     if not source:
-        print("Skipping: source code could not be retrieved.")
+        print("Source code not returned by Codeforces API.")
         skipped += 1
         continue
+
+    print("Source code received successfully.")
 
     extension = get_extension(language)
     language_folder = get_language_folder(language)
