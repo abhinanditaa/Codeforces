@@ -1,8 +1,10 @@
 import json
 import os
 import re
+import time
 import urllib.parse
 import urllib.request
+from html import unescape
 from pathlib import Path
 
 HANDLE = os.environ["CODEFORCES_HANDLE"]
@@ -80,6 +82,60 @@ def get_language_folder(language):
     return "Other"
 
 
+def fetch_source_code(contest_id, submission_id):
+    """
+    Fetch source code from the Codeforces submission page.
+    """
+
+    url = (
+        f"https://codeforces.com/contest/"
+        f"{contest_id}/submission/{submission_id}"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 "
+                          "(compatible; Codeforces-GitHub-Sync/1.0)"
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            html = response.read().decode("utf-8", errors="replace")
+
+        # Codeforces stores source code inside:
+        # <pre id="program-source-text">...</pre>
+
+        match = re.search(
+            r'<pre[^>]*id=["\']program-source-text["\'][^>]*>'
+            r'(.*?)'
+            r'</pre>',
+            html,
+            re.DOTALL | re.IGNORECASE
+        )
+
+        if not match:
+            print(
+                f"Could not find source code for submission "
+                f"{submission_id}"
+            )
+            return None
+
+        source = match.group(1)
+
+        # Convert HTML entities back to normal source code.
+        source = unescape(source)
+
+        return source
+
+    except Exception as e:
+        print(
+            f"Failed to fetch submission {submission_id}: {e}"
+        )
+        return None
+
+
 print(f"Fetching Codeforces submissions for: {HANDLE}")
 
 request = urllib.request.Request(
@@ -107,18 +163,18 @@ skipped = 0
 
 for submission in submissions:
 
+    # Only sync accepted submissions.
     if submission.get("verdict") != "OK":
         continue
 
     problem = submission.get("problem", {})
-    source = submission.get("source")
-
-    if not source:
-        skipped += 1
-        continue
 
     contest_id = problem.get("contestId")
     index = problem.get("index", "Unknown")
+
+    if not contest_id:
+        skipped += 1
+        continue
 
     problem_name = problem.get(
         "name",
@@ -138,21 +194,50 @@ for submission in submissions:
     output_dir = SOLUTIONS_DIR / language_folder
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{contest_id}_{index}_{safe_name}{extension}"
+    filename = (
+        f"{contest_id}_{index}_{safe_name}{extension}"
+    )
+
     output_file = output_dir / filename
 
+    # Already synced.
     if output_file.exists():
         skipped += 1
         continue
 
+    submission_id = submission.get("id")
+
+    if not submission_id:
+        skipped += 1
+        continue
+
+    print(
+        f"Fetching source: "
+        f"{contest_id}{index} "
+        f"(submission {submission_id})"
+    )
+
+    source = fetch_source_code(
+        contest_id,
+        submission_id
+    )
+
+    if not source:
+        skipped += 1
+        continue
+
     header = (
-        f"// Codeforces Problem: {contest_id}{index}\n"
+        f"// Codeforces Problem: "
+        f"{contest_id}{index}\n"
         f"// Title: {problem_name}\n"
         f"// Language: {language}\n"
-        f"// Submission ID: {submission.get('id')}\n"
-        f"// Rating: {problem.get('rating', 'N/A')}\n"
-        f"// Tags: {', '.join(problem.get('tags', []))}\n"
-        f"// URL: https://codeforces.com/problemset/problem/"
+        f"// Submission ID: {submission_id}\n"
+        f"// Rating: "
+        f"{problem.get('rating', 'N/A')}\n"
+        f"// Tags: "
+        f"{', '.join(problem.get('tags', []))}\n"
+        f"// URL: "
+        f"https://codeforces.com/problemset/problem/"
         f"{contest_id}/{index}\n"
         "\n"
     )
@@ -163,7 +248,12 @@ for submission in submissions:
     )
 
     print(f"Added: {output_file}")
+
     created += 1
+
+    # Small delay to avoid making many requests too quickly.
+    time.sleep(1)
+
 
 print()
 print("========================================")
