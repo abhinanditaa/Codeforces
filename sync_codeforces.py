@@ -7,6 +7,10 @@ import urllib.request
 from html import unescape
 from pathlib import Path
 
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 HANDLE = os.environ["CODEFORCES_HANDLE"]
 
 API_URL = (
@@ -21,122 +25,275 @@ API_URL = (
 SOLUTIONS_DIR = Path("solutions")
 
 
+# ============================================================
+# FILE NAME HELPERS
+# ============================================================
+
 def sanitize_filename(name):
+    """
+    Make a problem name safe to use as a filename.
+    """
+
     name = re.sub(r'[<>:"/\\|?*]', '', name)
     name = re.sub(r'\s+', '_', name)
     name = name.strip("._")
+
     return name[:100] or "Problem"
 
+
+# ============================================================
+# LANGUAGE EXTENSIONS
+# ============================================================
 
 def get_extension(language):
     language = language.lower()
 
     if "java" in language:
         return ".java"
+
     if "python" in language:
         return ".py"
-    if "gnu c++" in language or "g++" in language or "c++" in language:
+
+    if (
+        "gnu c++" in language
+        or "g++" in language
+        or "c++" in language
+    ):
         return ".cpp"
+
     if "gnu c" in language or language == "c":
         return ".c"
+
     if "kotlin" in language:
         return ".kt"
+
     if "rust" in language:
         return ".rs"
+
     if "c#" in language:
         return ".cs"
+
     if "go" in language:
         return ".go"
+
     if "javascript" in language:
         return ".js"
+
     if "typescript" in language:
         return ".ts"
 
     return ".txt"
 
 
+# ============================================================
+# LANGUAGE FOLDERS
+# ============================================================
+
 def get_language_folder(language):
     language = language.lower()
 
     if "java" in language:
         return "Java"
+
     if "python" in language:
         return "Python"
-    if "gnu c++" in language or "g++" in language or "c++" in language:
+
+    if (
+        "gnu c++" in language
+        or "g++" in language
+        or "c++" in language
+    ):
         return "C++"
+
     if "gnu c" in language or language == "c":
         return "C"
+
     if "kotlin" in language:
         return "Kotlin"
+
     if "rust" in language:
         return "Rust"
+
     if "c#" in language:
         return "CSharp"
+
     if "go" in language:
         return "Go"
+
     if "javascript" in language:
         return "JavaScript"
+
     if "typescript" in language:
         return "TypeScript"
 
     return "Other"
 
 
+# ============================================================
+# FETCH SOURCE CODE
+# ============================================================
+
 def fetch_source_code(contest_id, submission_id):
     """
-    Fetch source code from the Codeforces submission page.
+    Fetch source code from a Codeforces submission page.
     """
 
-    url = (
-        f"https://codeforces.com/contest/"
-        f"{contest_id}/submission/{submission_id}"
-    )
+    urls = [
+        (
+            f"https://codeforces.com/contest/"
+            f"{contest_id}/submission/{submission_id}"
+        ),
+        (
+            f"https://codeforces.com/problemset/"
+            f"submission/{contest_id}/{submission_id}"
+        )
+    ]
 
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 "
-                          "(compatible; Codeforces-GitHub-Sync/1.0)"
-        }
-    )
+    for url in urls:
 
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            html = response.read().decode("utf-8", errors="replace")
+        print(f"Opening submission page: {url}")
 
-        # Codeforces stores source code inside:
-        # <pre id="program-source-text">...</pre>
-
-        match = re.search(
-            r'<pre[^>]*id=["\']program-source-text["\'][^>]*>'
-            r'(.*?)'
-            r'</pre>',
-            html,
-            re.DOTALL | re.IGNORECASE
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) "
+                    "Chrome/131.0 Safari/537.36"
+                ),
+                "Accept": (
+                    "text/html,application/xhtml+xml,"
+                    "application/xml;q=0.9,*/*;q=0.8"
+                )
+            }
         )
 
-        if not match:
+        try:
+
+            with urllib.request.urlopen(
+                request,
+                timeout=30
+            ) as response:
+
+                html = response.read().decode(
+                    "utf-8",
+                    errors="replace"
+                )
+
             print(
-                f"Could not find source code for submission "
-                f"{submission_id}"
+                f"Downloaded submission page "
+                f"({len(html)} characters)"
             )
-            return None
 
-        source = match.group(1)
+            # ------------------------------------------------
+            # Codeforces normally stores the source code in:
+            #
+            # <pre id="program-source-text">...</pre>
+            # ------------------------------------------------
 
-        # Convert HTML entities back to normal source code.
-        source = unescape(source)
+            patterns = [
 
-        return source
+                r'<pre[^>]+id=["\']program-source-text["\']'
+                r'[^>]*>(.*?)</pre>',
 
-    except Exception as e:
-        print(
-            f"Failed to fetch submission {submission_id}: {e}"
-        )
-        return None
+                r'<pre[^>]+class=["\'][^"\']*'
+                r'program-source-text[^"\']*["\'][^>]*>'
+                r'(.*?)</pre>'
+            ]
+
+            source = None
+
+            for pattern in patterns:
+
+                match = re.search(
+                    pattern,
+                    html,
+                    re.DOTALL | re.IGNORECASE
+                )
+
+                if match:
+                    source = match.group(1)
+                    break
+
+            # ------------------------------------------------
+            # If source code wasn't found
+            # ------------------------------------------------
+
+            if source is None:
+
+                print(
+                    "Source code element was not found "
+                    "on this page."
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # Decode HTML entities
+            # ------------------------------------------------
+
+            source = unescape(source)
+
+            # ------------------------------------------------
+            # Remove HTML tags if any exist
+            # ------------------------------------------------
+
+            source = re.sub(
+                r"<[^>]+>",
+                "",
+                source
+            )
+
+            # ------------------------------------------------
+            # Normalize line endings
+            # ------------------------------------------------
+
+            source = source.replace(
+                "\r\n",
+                "\n"
+            )
+
+            source = source.replace(
+                "\r",
+                "\n"
+            )
+
+            source = source.strip("\n")
+
+            # ------------------------------------------------
+            # Verify source isn't empty
+            # ------------------------------------------------
+
+            if source:
+
+                print(
+                    "Source code successfully extracted."
+                )
+
+                return source
+
+        except Exception as e:
+
+            print(
+                f"Could not fetch submission page: {e}"
+            )
+
+    print(
+        f"FAILED: Could not obtain source code "
+        f"for submission {submission_id}"
+    )
+
+    return None
 
 
-print(f"Fetching Codeforces submissions for: {HANDLE}")
+# ============================================================
+# GET CODEFORCES SUBMISSIONS
+# ============================================================
+
+print(
+    f"Fetching Codeforces submissions for: {HANDLE}"
+)
 
 request = urllib.request.Request(
     API_URL,
@@ -145,120 +302,299 @@ request = urllib.request.Request(
     }
 )
 
-with urllib.request.urlopen(request, timeout=30) as response:
-    data = json.loads(response.read().decode("utf-8"))
+try:
+
+    with urllib.request.urlopen(
+        request,
+        timeout=30
+    ) as response:
+
+        data = json.loads(
+            response.read().decode("utf-8")
+        )
+
+except Exception as e:
+
+    raise RuntimeError(
+        f"Failed to contact Codeforces API: {e}"
+    )
+
+
+# ============================================================
+# CHECK API RESPONSE
+# ============================================================
 
 if data.get("status") != "OK":
+
     raise RuntimeError(
         "Codeforces API error: "
-        + data.get("comment", "Unknown error")
+        + data.get(
+            "comment",
+            "Unknown error"
+        )
     )
+
 
 submissions = data["result"]
 
-print(f"Fetched {len(submissions)} submissions.")
+print(
+    f"Fetched {len(submissions)} submissions."
+)
+
+
+# ============================================================
+# SYNC ACCEPTED SOLUTIONS
+# ============================================================
 
 created = 0
 skipped = 0
 
+
 for submission in submissions:
 
-    # Only sync accepted submissions.
+    # --------------------------------------------------------
+    # Only accepted submissions
+    # --------------------------------------------------------
+
     if submission.get("verdict") != "OK":
         continue
 
-    problem = submission.get("problem", {})
 
-    contest_id = problem.get("contestId")
-    index = problem.get("index", "Unknown")
+    problem = submission.get(
+        "problem",
+        {}
+    )
+
+
+    # --------------------------------------------------------
+    # Problem information
+    # --------------------------------------------------------
+
+    contest_id = problem.get(
+        "contestId"
+    )
+
+    index = problem.get(
+        "index",
+        "Unknown"
+    )
+
 
     if not contest_id:
+
+        print(
+            "Skipping submission because "
+            "contest ID is missing."
+        )
+
         skipped += 1
         continue
+
 
     problem_name = problem.get(
         "name",
         f"Problem_{contest_id}_{index}"
     )
 
+
+    # --------------------------------------------------------
+    # Language
+    # --------------------------------------------------------
+
     language = submission.get(
         "programmingLanguage",
         "Unknown"
     )
 
-    extension = get_extension(language)
-    language_folder = get_language_folder(language)
 
-    safe_name = sanitize_filename(problem_name)
+    extension = get_extension(
+        language
+    )
 
-    output_dir = SOLUTIONS_DIR / language_folder
-    output_dir.mkdir(parents=True, exist_ok=True)
+    language_folder = get_language_folder(
+        language
+    )
+
+
+    # --------------------------------------------------------
+    # File name
+    # --------------------------------------------------------
+
+    safe_name = sanitize_filename(
+        problem_name
+    )
+
+
+    output_dir = (
+        SOLUTIONS_DIR
+        / language_folder
+    )
+
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
 
     filename = (
-        f"{contest_id}_{index}_{safe_name}{extension}"
+        f"{contest_id}_"
+        f"{index}_"
+        f"{safe_name}"
+        f"{extension}"
     )
 
-    output_file = output_dir / filename
 
-    # Already synced.
+    output_file = (
+        output_dir
+        / filename
+    )
+
+
+    # --------------------------------------------------------
+    # Don't duplicate existing solutions
+    # --------------------------------------------------------
+
     if output_file.exists():
+
+        print(
+            f"Already exists: {output_file}"
+        )
+
         skipped += 1
         continue
 
-    submission_id = submission.get("id")
+
+    # --------------------------------------------------------
+    # Submission ID
+    # --------------------------------------------------------
+
+    submission_id = submission.get(
+        "id"
+    )
+
 
     if not submission_id:
+
+        print(
+            "Skipping submission because "
+            "submission ID is missing."
+        )
+
         skipped += 1
         continue
 
+
+    # --------------------------------------------------------
+    # Fetch actual source code
+    # --------------------------------------------------------
+
+    print()
     print(
-        f"Fetching source: "
-        f"{contest_id}{index} "
-        f"(submission {submission_id})"
+        f"Fetching source for "
+        f"{contest_id}{index}"
     )
+
+    print(
+        f"Submission ID: {submission_id}"
+    )
+
+    print(
+        f"Language: {language}"
+    )
+
 
     source = fetch_source_code(
         contest_id,
         submission_id
     )
 
+
+    # --------------------------------------------------------
+    # Source unavailable
+    # --------------------------------------------------------
+
     if not source:
+
+        print(
+            f"SKIPPED submission "
+            f"{submission_id}: "
+            f"source code could not be retrieved."
+        )
+
         skipped += 1
         continue
+
+
+    # ========================================================
+    # CREATE HEADER
+    # ========================================================
 
     header = (
         f"// Codeforces Problem: "
         f"{contest_id}{index}\n"
-        f"// Title: {problem_name}\n"
-        f"// Language: {language}\n"
-        f"// Submission ID: {submission_id}\n"
+
+        f"// Title: "
+        f"{problem_name}\n"
+
+        f"// Language: "
+        f"{language}\n"
+
+        f"// Submission ID: "
+        f"{submission_id}\n"
+
         f"// Rating: "
         f"{problem.get('rating', 'N/A')}\n"
+
         f"// Tags: "
         f"{', '.join(problem.get('tags', []))}\n"
+
         f"// URL: "
         f"https://codeforces.com/problemset/problem/"
         f"{contest_id}/{index}\n"
+
         "\n"
     )
+
+
+    # ========================================================
+    # WRITE SOLUTION FILE
+    # ========================================================
 
     output_file.write_text(
         header + source,
         encoding="utf-8"
     )
 
-    print(f"Added: {output_file}")
+
+    print()
+    print(
+        f"Added: {output_file}"
+    )
+
 
     created += 1
 
-    # Small delay to avoid making many requests too quickly.
+
+    # --------------------------------------------------------
+    # Small delay between Codeforces requests
+    # --------------------------------------------------------
+
     time.sleep(1)
 
+
+# ============================================================
+# FINAL REPORT
+# ============================================================
 
 print()
 print("========================================")
 print("Codeforces → GitHub Sync Complete")
 print("========================================")
-print(f"New solutions: {created}")
-print(f"Skipped:       {skipped}")
+print(
+    f"New solutions: {created}"
+)
+print(
+    f"Skipped:       {skipped}"
+)
 print("========================================")
